@@ -2,7 +2,7 @@
 This module contains data structures and validation functions for Bill of Materials data.
 """
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from enum import StrEnum
 from typing import NamedTuple, Optional
 
@@ -35,11 +35,33 @@ class FSUKSystems(StrEnum):
     WT = "Wheels and Tyres"
 
 
-@dataclass(frozen=True)
+FSUK_SYSTEM_MAP: dict[str, FSUKSystems] = {
+    "Brakes": FSUKSystems.BR,
+    "Chassis & Body": FSUKSystems.FR,
+    "Drivetrain": FSUKSystems.DT,
+    "Engine & TS": FSUKSystems.TS,
+    "Electrical": FSUKSystems.EL,
+    "Misc": FSUKSystems.MS,
+    "Steering": FSUKSystems.ST,
+    "Suspension": FSUKSystems.SU,
+    "Wheels": FSUKSystems.WT,
+}
+
+
+def _determine_fsuk_system(system: str) -> FSUKSystems:
+    """Determine the FSUK system from a string."""
+    if system in FSUKSystems.__members__:
+        return FSUKSystems(system)
+    if system in FSUK_SYSTEM_MAP.keys():
+        return FSUK_SYSTEM_MAP[system]
+    raise KeyError(f"Invalid system '{system}'")
+
+
+@dataclass
 class RowData(object):
     """A row of data in the Bill of Materials."""
 
-    system: str
+    system: InitVar[str]
     assembly: str
     part: str
     make_or_buy: str
@@ -51,10 +73,17 @@ class RowData(object):
     cost_comment: str
     carbon_footprint: float
     carbon_comment: str
+    fsuk_system: Optional[FSUKSystems] = field(init=False)
+
+    def __post_init__(self, system: str) -> None:
+        if system:
+            self.fsuk_system = _determine_fsuk_system(system)
+        else:
+            self.fsuk_system = None
 
     @property
     def row_type(self) -> RowType:
-        if self.system != "":
+        if self.fsuk_system is not None:
             row_type = RowType.SYSTEM
         elif self.assembly != "":
             row_type = RowType.ASSEMBLY
@@ -71,7 +100,7 @@ class RowData(object):
         """Get a string identifier for the row."""
         match self.row_type:
             case RowType.SYSTEM:
-                identifier = self.system
+                identifier = self.fsuk_system if self.fsuk_system else ""
             case RowType.ASSEMBLY:
                 identifier = self.assembly
             case RowType.PART:
@@ -87,15 +116,15 @@ class RowData(object):
         message: Optional[str] = None
 
         if self.row_type == RowType.SYSTEM:
-            if self.system not in FSUKSystems:
+            if self.fsuk_system not in FSUKSystems:
                 message = (
-                    f"Invalid system {self.system}; "
+                    f"Invalid system {self.fsuk_system}; "
                     f"must be one of {list(map(str, FSUKSystems))}"
                 )
 
         elif self.row_type == RowType.ASSEMBLY:
             # TODO: assembly validation
-            message = ""
+            message = None
 
         elif self.row_type == RowType.PART:
             if self.make_or_buy not in VALID_MAKE_OR_BUY:
@@ -130,7 +159,7 @@ class RowData(object):
                 )
 
         else:
-            message = "Invalid row"
+            message = f"Invalid row: {self.__repr__}"
 
         return message
 

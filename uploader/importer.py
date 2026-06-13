@@ -6,6 +6,7 @@ from csv import DictReader
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter.filedialog import askopenfilename
+from typing import Optional
 
 from uploader.data import RowData, ValidationErrorData, validate_data
 
@@ -68,6 +69,20 @@ class IncorrectColumnsError(ImportError):
 
 
 @dataclass
+class RowError(ImportError):
+    """Raised if an error occurs while importing a row."""
+
+    row: str
+    error: Exception
+
+    def __str__(self) -> str:
+        return (
+            f"An error occured while loading the following row:\n{self.row}\n"
+            f"Error details: {self.error}"
+        )
+
+
+@dataclass
 class ValidationError(ImportError):
     """Raised if the file contains invalid data."""
 
@@ -78,10 +93,12 @@ class ValidationError(ImportError):
         return f"{len(self.errors)} error(s) found in '{self.filepath}':\n\t{error_messages}"
 
 
-def load_data(delimiter: str = "|") -> list[RowData]:
+def load_data(
+    filepath: Optional[Path] = None, *, delimiter: str = "|"
+) -> list[RowData]:
 
-    print("Please select a file to upload.")
-    filepath = select_file()
+    if filepath is None:
+        filepath = select_file()
 
     print(f"Loading data from '{filepath}'...")
     data = load_data_from_file(filepath, delimiter=delimiter)
@@ -122,28 +139,31 @@ def load_data_from_file(filepath: Path, delimiter: str = "|") -> list[RowData]:
         data: list[RowData] = []
 
         for row in reader:
-            if row["quantity"] is None:
-                row["quantity"] = 0
-            if row["cost"] is None:
-                row["cost"] = "NaN"
-            if row["carbon_footprint"] is None:
-                row["carbon_footprint"] = "NaN"
+            try:
+                if not row["quantity"]:
+                    row["quantity"] = 0
+                if not row["cost"]:
+                    row["cost"] = "NaN"
+                if not row["carbon_footprint"]:
+                    row["carbon_footprint"] = "NaN"
 
-            data.append(
-                RowData(
-                    system=row["system"],
-                    assembly=row["assembly"],
-                    part=row["part"],
-                    make_or_buy=row["make_or_buy"],
-                    step_type=row["step_type"],
-                    subtype=row["subtype"],
-                    comment=row["comment"],
-                    quantity=int(row["quantity"]),
-                    cost=float(row["cost"]),
-                    cost_comment=row["cost_comment"],
-                    carbon_footprint=float(row["carbon_footprint"]),
-                    carbon_comment=row["carbon_comment"],
+                data.append(
+                    RowData(
+                        system=row["system"],
+                        assembly=row["assembly"],
+                        part=row["part"],
+                        make_or_buy=row["make_or_buy"],
+                        step_type=row["step_type"],
+                        subtype=row["subtype"],
+                        comment=row["comment"],
+                        quantity=int(row["quantity"]),
+                        cost=float(row["cost"]),
+                        cost_comment=row["cost_comment"],
+                        carbon_footprint=float(row["carbon_footprint"]),
+                        carbon_comment=row["carbon_comment"],
+                    )
                 )
-            )
+            except Exception as e:
+                raise RowError(filepath, row=str(row), error=e)
 
     return data
