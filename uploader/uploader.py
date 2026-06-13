@@ -6,7 +6,7 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Optional
 
-from uploader.data import FSUKSystems, RowData, RowType
+from uploader.data import Cursor, RowData, RowType
 from uploader.webinterface import WebInterface
 
 
@@ -57,19 +57,11 @@ class CannotLocateParentPartError(UploadError):
         return f"Cannot upload step '{self.row_data}'; unable to locate parent part '{self.parent}'."
 
 
-@dataclass
-class Cursor(object):
-    """Dataclass holding information about where to upload rows."""
-
-    current_system: Optional[FSUKSystems] = None
-    current_assembly: Optional[str] = None
-    current_part: Optional[str] = None
-
-
 def upload_bill_of_materials(
     bom: list[RowData],
     username: str,
     password: str,
+    initial_cursor: Optional[Cursor] = None,
     base_revision: int = 1,
     snapshot_label: str = "Bill of Materials",
 ) -> None:
@@ -91,16 +83,20 @@ def upload_bill_of_materials(
 
     # Upload data
     print("Uploading bill of materials...")
-    _upload_data(web_interface, bom, upload_cost=True)
+    _upload_data(web_interface, bom, upload_cost=True, cursor=initial_cursor)
     print("Bill of materials uploaded successfully.")
 
 
 def _upload_data(
-    web_interface: WebInterface, data: list[RowData], upload_cost: bool
+    web_interface: WebInterface,
+    data: list[RowData],
+    upload_cost: bool,
+    cursor: Optional[Cursor] = None,
 ) -> None:
     """Input the data to the website."""
 
-    cursor = Cursor()
+    if cursor is None:
+        cursor = Cursor()
 
     for index, row in enumerate(data):
         current_row = f"({index + 1}/{len(data)})"
@@ -111,7 +107,7 @@ def _upload_data(
             case RowType.SYSTEM:
                 cursor.current_system = row.fsuk_system
             case RowType.ASSEMBLY:
-                cursor.current_assembly = row.assembly
+                cursor.current_assembly = row.assembly.strip()
             case RowType.PART:
                 cursor.current_part = _upload_part(
                     web_interface, row, cursor, upload_cost
@@ -140,7 +136,7 @@ def _upload_part(
             assembly=cursor.current_assembly,
             upload_cost=upload_cost,
         )
-        return data.part
+        return data.part.strip()
     except Exception as e:
         print(e)
         print(f"Error: Unable to upload part '{data}'")

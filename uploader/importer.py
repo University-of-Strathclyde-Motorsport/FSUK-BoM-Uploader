@@ -8,7 +8,13 @@ from pathlib import Path
 from tkinter.filedialog import askopenfilename
 from typing import Optional
 
-from uploader.data import RowData, ValidationErrorData, validate_data
+from uploader.data import (
+    Cursor,
+    RowData,
+    ValidationErrorData,
+    _determine_fsuk_system,
+    validate_data,
+)
 
 VALID_FORMATS = [("CSV", ".csv")]
 REQUIRED_FIELDS = {
@@ -94,14 +100,16 @@ class ValidationError(ImportError):
 
 
 def load_data(
-    filepath: Optional[Path] = None, *, delimiter: str = "|"
-) -> list[RowData]:
+    filepath: Optional[Path] = None, *, delimiter: str = "|", skip_rows: int = 0
+) -> tuple[list[RowData], Cursor]:
 
     if filepath is None:
         filepath = select_file()
 
     print(f"Loading data from '{filepath}'...")
-    data = load_data_from_file(filepath, delimiter=delimiter)
+    data, cursor = load_data_from_file(
+        filepath, delimiter=delimiter, skip_rows=skip_rows
+    )
     print(f"Loaded {len(data)} rows of data.\n")
 
     print("Validating data...")
@@ -110,7 +118,7 @@ def load_data(
         raise ValidationError(filepath, errors)
     print("Successfully validated data.\n")
 
-    return data
+    return data, cursor
 
 
 def select_file() -> Path:
@@ -121,7 +129,9 @@ def select_file() -> Path:
     return Path(filepath)
 
 
-def load_data_from_file(filepath: Path, delimiter: str = "|") -> list[RowData]:
+def load_data_from_file(
+    filepath: Path, delimiter: str = "|", skip_rows: int = 0
+) -> tuple[list[RowData], Cursor]:
 
     valid_formats = [format[1] for format in VALID_FORMATS]
     if filepath.suffix not in valid_formats:
@@ -137,8 +147,19 @@ def load_data_from_file(filepath: Path, delimiter: str = "|") -> list[RowData]:
             raise IncorrectColumnsError(filepath)
 
         data: list[RowData] = []
+        cursor = Cursor()
 
-        for row in reader:
+        for i, row in enumerate(reader):
+            if i < skip_rows:
+                if row["system"]:
+                    cursor.current_system = _determine_fsuk_system(
+                        row["system"]
+                    )
+                if row["assembly"]:
+                    cursor.current_assembly = row["assembly"]
+                if row["part"]:
+                    cursor.current_part = row["part"]
+                continue
             try:
                 if not row["quantity"]:
                     row["quantity"] = 0
@@ -166,4 +187,4 @@ def load_data_from_file(filepath: Path, delimiter: str = "|") -> list[RowData]:
             except Exception as e:
                 raise RowError(filepath, row=str(row), error=e)
 
-    return data
+    return data, cursor

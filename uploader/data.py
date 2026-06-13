@@ -187,3 +187,12 @@ def validate_data(data: list[RowData]) -> list[ValidationErrorData]:
             print(error)
 
     return errors
+
+
+@dataclass
+class Cursor(object):
+    """Dataclass holding information about where to upload rows."""
+
+    current_system: Optional[FSUKSystems] = None
+    current_assembly: Optional[str] = None
+    current_part: Optional[str] = None
