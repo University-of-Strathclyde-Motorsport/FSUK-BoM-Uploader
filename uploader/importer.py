@@ -1,86 +1,149 @@
-from .data import RowData, validate_data
-from tkinter.filedialog import askopenfilename
-from os.path import splitext
+"""
+This module loads a Bill of Materials from a csv file.
+"""
+
 from csv import DictReader
+from dataclasses import dataclass
+from pathlib import Path
+from tkinter.filedialog import askopenfilename
 
-
+from uploader.data import RowData, ValidationErrorData, validate_data
 
 VALID_FORMATS = [("CSV", ".csv")]
-REQUIRED_FIELDS = {"system", "assembly", "part", "make_or_buy",
-                   "step_type", "subtype", "comment", "quantity",
-                   "cost", "cost_comment", "carbon_footprint", "carbon_comment"}
+REQUIRED_FIELDS = {
+    "system",
+    "assembly",
+    "part",
+    "make_or_buy",
+    "step_type",
+    "subtype",
+    "comment",
+    "quantity",
+    "cost",
+    "cost_comment",
+    "carbon_footprint",
+    "carbon_comment",
+}
 
+
+@dataclass
+class ImportError(Exception):
+    """Base class for errors raised during the import process."""
+
+    filepath: Path
+
+
+class NoFileSelectedError(ImportError):
+    """Raised if no file is selected."""
+
+    def __str__(self) -> str:
+        return "No file selected."
+
+
+@dataclass
+class InvalidFileFormatError(ImportError):
+    """Raised if the file format is invalid."""
+
+    valid_formats: list[str]
+
+    def __str__(self) -> str:
+        return (
+            f"Invalid file format '{self.filepath.suffix}'."
+            f"Expected one of {self.valid_formats}."
+        )
+
+
+class NoDataError(ImportError):
+    """Raised if the file contains no data."""
+
+    def __str__(self) -> str:
+        return f"No data found in the '{self.filepath}'."
+
+
+class IncorrectColumnsError(ImportError):
+    """Raised if the file does not contain the required columns."""
+
+    def __str__(self) -> str:
+        return f"Incorrect columns in '{self.filepath}'\nExpected: {REQUIRED_FIELDS}"
+
+
+@dataclass
+class ValidationError(ImportError):
+    """Raised if the file contains invalid data."""
+
+    errors: list[ValidationErrorData]
+
+    def __str__(self) -> str:
+        error_messages = "\n\t".join([str(error) for error in self.errors])
+        return f"{len(self.errors)} error(s) found in '{self.filepath}':\n\t{error_messages}"
 
 
 def load_data(delimiter: str = "|") -> list[RowData]:
 
     print("Please select a file to upload.")
     filepath = select_file()
-    if filepath == "":
-        raise Exception("No file selected. Exiting programme.")
-    
+
     print(f"Loading data from '{filepath}'...")
     data = load_data_from_file(filepath, delimiter=delimiter)
     print(f"Loaded {len(data)} rows of data.\n")
-    
+
     print("Validating data...")
-    error_count = validate_data(data)
-    if error_count > 0:
-        message = f"{error_count} error(s) detected in data. Exiting programme."
-        raise Exception(message)
+    errors = validate_data(data)
+    if len(errors) > 0:
+        raise ValidationError(filepath, errors)
     print("Successfully validated data.\n")
 
     return data
 
 
-
-def select_file() -> str:
+def select_file() -> Path:
     title_text = "Select a Bill of Materials to upload"
-    filepath = askopenfilename(title = title_text, filetypes = VALID_FORMATS)
-    return filepath
+    filepath = askopenfilename(title=title_text, filetypes=VALID_FORMATS)
+    if filepath == "":
+        raise NoFileSelectedError(Path(""))
+    return Path(filepath)
 
 
+def load_data_from_file(filepath: Path, delimiter: str = "|") -> list[RowData]:
 
-def load_data_from_file(filepath: str, delimiter: str = "|") -> list[RowData]:
+    valid_formats = [format[1] for format in VALID_FORMATS]
+    if filepath.suffix not in valid_formats:
+        raise InvalidFileFormatError(filepath, valid_formats)
 
-    _, file_extension = splitext(filepath)
+    with open(filepath, newline="") as file:
+        reader = DictReader(file, delimiter=delimiter)
 
-    if file_extension not in [format[1] for format in VALID_FORMATS]:
-        raise Exception(f"Unsupported file format '{file_extension}'")
+        if reader.fieldnames is None:
+            raise NoDataError(filepath)
 
-    file = open(filepath, newline="")
-    reader = DictReader(file, delimiter=delimiter)
+        if not REQUIRED_FIELDS.issubset(set(reader.fieldnames)):
+            raise IncorrectColumnsError(filepath)
 
-    if reader.fieldnames == None:
-        raise Exception(f"No data found in '{filepath}'")
-    
-    if not REQUIRED_FIELDS.issubset(set(reader.fieldnames)):
-        raise Exception(f"Incorrect columns in '{filepath}'\n" \
-                        f"Expected: {REQUIRED_FIELDS}")
-    
-    data: list[RowData] = []
+        data: list[RowData] = []
 
-    for row in reader:
+        for row in reader:
+            if row["quantity"] is None:
+                row["quantity"] = 0
+            if row["cost"] is None:
+                row["cost"] = "NaN"
+            if row["carbon_footprint"] is None:
+                row["carbon_footprint"] = "NaN"
 
-        if row["quantity"] is None: row["quantity"] = 0
-        if row["cost"] is None: row["cost"] = "NaN"
-        if row["carbon_footprint"] is None: row["carbon_footprint"] = "NaN"
-
-        data.append(RowData(
-            system=row["system"],
-            assembly=row["assembly"],
-            part=row["part"],
-            make_or_buy=row["make_or_buy"],
-            step_type=row["step_type"],
-            subtype=row["subtype"],
-            comment=row["comment"],
-            quantity=int(row["quantity"]),
-            cost=float(row["cost"]),
-            cost_comment=row["cost_comment"],
-            carbon_footprint=float(row["carbon_footprint"]),
-            carbon_comment=row["carbon_comment"]
-        ))
-
-    file.close()
+            data.append(
+                RowData(
+                    system=row["system"],
+                    assembly=row["assembly"],
+                    part=row["part"],
+                    make_or_buy=row["make_or_buy"],
+                    step_type=row["step_type"],
+                    subtype=row["subtype"],
+                    comment=row["comment"],
+                    quantity=int(row["quantity"]),
+                    cost=float(row["cost"]),
+                    cost_comment=row["cost_comment"],
+                    carbon_footprint=float(row["carbon_footprint"]),
+                    carbon_comment=row["carbon_comment"],
+                )
+            )
 
     return data
