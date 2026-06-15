@@ -4,7 +4,7 @@ This module contains data structures and validation functions for Bill of Materi
 
 from dataclasses import InitVar, dataclass, field
 from enum import StrEnum
-from typing import NamedTuple, Optional
+from typing import Optional
 
 VALID_MAKE_OR_BUY = ["Make", "Buy"]
 VALID_STEP_TYPES = ["Material", "Process", "Fasteners", "Tooling"]
@@ -96,6 +96,9 @@ class RowData(object):
 
         return row_type
 
+    def requires_quantity(self) -> bool:
+        return self.row_type in [RowType.PART, RowType.STEP]
+
     def __str__(self) -> str:
         """Get a string identifier for the row."""
         match self.row_type:
@@ -111,88 +114,14 @@ class RowData(object):
                 identifier = "Invalid row"
         return identifier
 
-    def check_for_errors(self) -> Optional[str]:
-
-        message: Optional[str] = None
-
-        if self.row_type == RowType.SYSTEM:
-            if self.fsuk_system not in FSUKSystems:
-                message = (
-                    f"Invalid system {self.fsuk_system}; "
-                    f"must be one of {list(map(str, FSUKSystems))}"
-                )
-
-        elif self.row_type == RowType.ASSEMBLY:
-            # TODO: assembly validation
-            message = None
-
-        elif self.row_type == RowType.PART:
-            if self.make_or_buy not in VALID_MAKE_OR_BUY:
-                message = (
-                    f"Invalid make_or_buy '{self.make_or_buy}'; "
-                    f"must be one of {VALID_MAKE_OR_BUY}"
-                )
-            elif self.quantity < 1:
-                message = (
-                    f"Invalid quantity '{self.quantity}'; "
-                    "must be greater than 0"
-                )
-            elif self.quantity > MAXIMUM_QUANTITY:
-                message = (
-                    f"Invalid quantity '{self.quantity}'; "
-                    f"must not be greater than {MAXIMUM_QUANTITY}"
-                    "(FSUK site limit)"
-                )
-            elif self.cost < 0:
-                message = f"Invalid cost '{self.cost}'; must not be negative"
-            elif self.carbon_footprint < 0:
-                message = (
-                    f"Invalid carbon_footprint "
-                    f"'{self.carbon_footprint}'; must not be negative"
-                )
-
-        elif self.row_type == RowType.STEP:
-            if self.step_type not in VALID_STEP_TYPES:
-                message = (
-                    f"Invalid step_type '{self.step_type}'; "
-                    f"must be one of {VALID_STEP_TYPES}"
-                )
-
-        else:
-            message = f"Invalid row: {self.__repr__}"
-
-        return message
-
-
-class ValidationErrorData(NamedTuple):
-    """Debug information about a validation error."""
-
-    row: int
-    message: str
-
-    def __str__(self) -> str:
-        return f"Row {self.row}: {self.message}"
-
-
-def validate_data(data: list[RowData]) -> list[ValidationErrorData]:
-    """Validate a list of rows, and return the number of errors found."""
-
-    errors: list[ValidationErrorData] = []
-
-    for index, row in enumerate(data):
-        error_message = row.check_for_errors()
-        if error_message is not None:
-            error = ValidationErrorData(row=index + 1, message=error_message)
-            errors.append(error)
-            print(error)
-
-    return errors
-
 
 @dataclass
 class Cursor(object):
     """Dataclass holding information about where to upload rows."""
 
-    current_system: Optional[FSUKSystems] = None
-    current_assembly: Optional[str] = None
-    current_part: Optional[str] = None
+    system: Optional[FSUKSystems] = None
+    assembly: Optional[str] = None
+    part: Optional[str] = None
+
+    def __str__(self) -> str:
+        return f"{self.system} - {self.assembly} - {self.part}"

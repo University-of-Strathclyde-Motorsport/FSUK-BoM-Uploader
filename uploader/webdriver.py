@@ -2,11 +2,15 @@
 This module implements a wrapper for the Selenium WebDriver.
 """
 
+import logging
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+
+logger = logging.getLogger("uploader.webdriver")
 
 
 class WebDriver(webdriver.Firefox):
@@ -17,11 +21,13 @@ class WebDriver(webdriver.Firefox):
         self.timeout_time = timeout_time
 
     def navigate_to_page(self, url: str) -> None:
+        logger.debug(f"Navigating to url '{url}'")
         self.driver.get(url)
 
     def wait_for_element(
         self, value: str, by: str = By.ID, clickable: bool = False
     ) -> None:
+        logger.debug(f"Waiting for element '{value}'")
         if clickable:
             WebDriverWait(self.driver, self.timeout_time).until(
                 EC.element_to_be_clickable((by, value))
@@ -36,6 +42,7 @@ class WebDriver(webdriver.Firefox):
 
     def get_element(self, value: str, by: str = By.ID) -> WebElement:
         element = self.driver.find_element(by, value)
+        logger.debug(f"Getting element '{element}")
         return element
 
     def click_element(
@@ -45,7 +52,9 @@ class WebDriver(webdriver.Firefox):
         if wait_for_element:
             self.wait_for_element(value, by=by, clickable=True)
 
-        self.driver.find_element(by, value).click()
+        element = self.driver.find_element(by, value)
+        logger.debug(f"Clicking on element '{element}'")
+        element.click()
 
     def send_keys(
         self,
@@ -66,4 +75,5 @@ class WebDriver(webdriver.Firefox):
         if keystrokes == "":
             return
 
+        logger.debug(f"Sending keystrokes '{str(keystrokes)}' to {element}")
         element.send_keys(str(keystrokes))
